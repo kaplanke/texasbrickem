@@ -63,9 +63,9 @@ const TBBRICKS_TEMPLATES = [
     ],
     [
         [0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0],
-        [0, 1, 1, 1, 0],
         [0, 0, 1, 0, 0],
+        [0, 1, 1, 1, 0],
+        [0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0]
     ],
     [
@@ -108,7 +108,9 @@ class TBGame {
     width;
     unitSize;
     currentBrick;
+    nextBrick;
     scene;
+    isOver;
 
     constructor(scene, height, width, unitSize) {
         this.height = height;
@@ -145,9 +147,11 @@ class TBBrick {
                 }
             )
         );
-        ret.draw();
-        ret.move(-2, game.height / 2 - 2);
         return ret;
+    }
+
+    remove() {
+        this.matrix.flat().forEach(d => d && d.destructor());
     }
 
     draw() {
@@ -160,6 +164,7 @@ class TBBrick {
                 }
             )
         );
+        return this.move(-2, this.game.height / 2 - 4);
     };
 
     move(xDelta, yDelta) {
@@ -334,11 +339,22 @@ export default function SingleGame() {
         const unitSize = height / divisions;
         const game = new TBGame(scene, Math.floor(height / unitSize), Math.floor(width / unitSize), unitSize);
         game.currentBrick = TBBrick.generate(game);
+        game.currentBrick.draw();
+        game.nextBrick = TBBrick.generate(game);
         currentGame["game"] = game;
 
-        setInterval(() => {
-            game.currentBrick.move(0, -1);
-        }, 5000);
+        currentGame["interval"] = setInterval(() => {
+            if (!game.currentBrick.move(0, -1) && !currentGame.game.isOver) {
+                checkLine();
+                game.currentBrick = game.nextBrick;
+                if (!game.currentBrick.draw()) {
+                    game.currentBrick.remove();
+                    gameOver();
+                }
+                game.nextBrick = TBBrick.generate(game);
+            }
+            ;
+        }, 1000);
 
         const render = (millis) => {
             currentGame["timeout"] = requestAnimationFrame(render);
@@ -355,11 +371,45 @@ export default function SingleGame() {
             return () => {
                 window.removeEventListener("keydown", onKeyDown);
                 cancelAnimationFrame(currentGame.timeout);
+                clearInterval(currentGame.interval);
             };
         }
     }, []);
 
+    function gameOver() {
+        currentGame.game.isOver = true;
+        console.log("Game over...");
+    }
+
+    function checkLine() {
+        const tmpHist = {};
+        const linesToRemove = [];
+        currentGame.game.board.forEach(d => {
+            if (d instanceof TBCard) {
+                tmpHist[d.y] = tmpHist[d.y] ? tmpHist[d.y] + 1 : 1;
+                if (tmpHist[d.y] === currentGame.game.width-2) {
+                    linesToRemove.push(d.y);
+                }
+            }
+        });
+        if (linesToRemove.length > 0) {
+            //TODO:poker
+            linesToRemove.sort((a, b) => b - a);
+            linesToRemove.forEach(l => {
+                currentGame.game.board.forEach(d => {
+                    if ((d instanceof TBCard) && d.y === l)
+                        d.destructor();
+                });
+                currentGame.game.board.forEach(d => {
+                    if (d.y > l && (d instanceof TBCard))
+                        d.setPos(d.x, d.y - 1);
+                });
+            });
+        }
+    }
+
     function onDropClick(event) {
+        while(currentGame.game.currentBrick.move(0,-1));
     };
 
     function onLeftClick(event) {
