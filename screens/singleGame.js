@@ -1,9 +1,10 @@
 import React, {useState, useEffect} from 'react';
-import {StyleSheet, TouchableOpacity, Text, View} from 'react-native';
+import {StyleSheet, TouchableOpacity, Text, View, Image} from 'react-native';
 import {GLView} from 'expo-gl';
 import {Asset} from 'expo-asset';
 import {Renderer, TextureLoader} from 'expo-three';
 import {rotate90, rotate270} from '2d-array-rotation';
+import {Audio} from 'expo-av';
 import {
     FontLoader,
     TextGeometry,
@@ -124,6 +125,12 @@ class TBGame {
             for (let j = -height / 2; j < height / 2; j++) {
                 if (i == -width / 2 || i == width / 2 - 1 || j == -height / 2)
                     new TBWall(this).draw(i, j);
+                else {
+                    if ((i + j) % 2)
+                        new Drawable(this, null, 0x0000FF, 1, true).draw(i, j);
+                    else
+                        new Drawable(this, null, 0x0000AA, 1, true).draw(i, j);
+                }
             }
         }
         console.log("Game started ", height, width, unitSize);
@@ -227,9 +234,7 @@ class TBBrick {
             )
         );
         return true;
-    }
-    ;
-
+    };
 }
 
 class Drawable {
@@ -238,12 +243,18 @@ class Drawable {
     y;
     game;
 
-    constructor(game, asset) {
+    constructor(game, asset, color, opacity, ignore) {
         this.game = game;
-        const texture = new TextureLoader().load(asset);
-        const unitMaterial = new MeshBasicMaterial({map: texture});
+        let unitMaterial;
+        if (asset) {
+            const texture = new TextureLoader().load(asset);
+            unitMaterial = new MeshBasicMaterial({map: texture});
+        } else {
+            unitMaterial = new MeshBasicMaterial({color: color, opacity: opacity});
+        }
         this.plane = new Mesh(new PlaneGeometry(this.game.unitSize, this.game.unitSize), unitMaterial);
-        game.board.push(this);
+        if (!ignore)
+            game.board.push(this);
     }
 
     destructor() {
@@ -252,7 +263,8 @@ class Drawable {
     }
 
     draw(x, y) {
-        throw new Error("Not Implemented");
+        this.game.scene.add(this.plane);
+        this.setPos(x, y);
     };
 
     setPos(x, y) {
@@ -273,7 +285,7 @@ class TBCard extends Drawable {
     rank;
 
     constructor(game, rank, suit) {
-        super(game, Asset.fromModule(require('../assets/cards/' + rank + suit + '.svg')));
+        super(game, assetCache["img" + rank + suit]);
         this.rank = rank;
         this.suit = suit;
     }
@@ -285,11 +297,6 @@ class TBCard extends Drawable {
         return ret;
     }
 
-    draw(x, y) {
-        this.game.scene.add(this.plane);
-        this.setPos(x, y);
-    }
-
 };
 
 class TBWall extends Drawable {
@@ -298,27 +305,89 @@ class TBWall extends Drawable {
     y;
 
     constructor(game) {
-        super(game, Asset.fromModule(require('../assets/wall.svg')));
+        super(game, Asset.fromModule(require('../assets/png/wall.png')));
     }
-
-    draw(x, y) {
-        this.game.scene.add(this.plane);
-        this.setPos(x, y);
-    }
-
 };
 
 
 const currentGame = {};
+const assetCache = {
+    'img2C': Asset.fromModule(require('../assets/png/2C.png')),
+    'img2D': Asset.fromModule(require('../assets/png/2D.png')),
+    'img2H': Asset.fromModule(require('../assets/png/2H.png')),
+    'img2S': Asset.fromModule(require('../assets/png/2S.png')),
+    'img3C': Asset.fromModule(require('../assets/png/3C.png')),
+    'img3D': Asset.fromModule(require('../assets/png/3D.png')),
+    'img3H': Asset.fromModule(require('../assets/png/3H.png')),
+    'img3S': Asset.fromModule(require('../assets/png/3S.png')),
+    'img4C': Asset.fromModule(require('../assets/png/4C.png')),
+    'img4D': Asset.fromModule(require('../assets/png/4D.png')),
+    'img4H': Asset.fromModule(require('../assets/png/4H.png')),
+    'img4S': Asset.fromModule(require('../assets/png/4S.png')),
+    'img5C': Asset.fromModule(require('../assets/png/5C.png')),
+    'img5D': Asset.fromModule(require('../assets/png/5D.png')),
+    'img5H': Asset.fromModule(require('../assets/png/5H.png')),
+    'img5S': Asset.fromModule(require('../assets/png/5S.png')),
+    'img6C': Asset.fromModule(require('../assets/png/6C.png')),
+    'img6D': Asset.fromModule(require('../assets/png/6D.png')),
+    'img6H': Asset.fromModule(require('../assets/png/6H.png')),
+    'img6S': Asset.fromModule(require('../assets/png/6S.png')),
+    'img7C': Asset.fromModule(require('../assets/png/7C.png')),
+    'img7D': Asset.fromModule(require('../assets/png/7D.png')),
+    'img7H': Asset.fromModule(require('../assets/png/7H.png')),
+    'img7S': Asset.fromModule(require('../assets/png/7S.png')),
+    'img8C': Asset.fromModule(require('../assets/png/8C.png')),
+    'img8D': Asset.fromModule(require('../assets/png/8D.png')),
+    'img8H': Asset.fromModule(require('../assets/png/8H.png')),
+    'img8S': Asset.fromModule(require('../assets/png/8S.png')),
+    'img9C': Asset.fromModule(require('../assets/png/9C.png')),
+    'img9D': Asset.fromModule(require('../assets/png/9D.png')),
+    'img9H': Asset.fromModule(require('../assets/png/9H.png')),
+    'img9S': Asset.fromModule(require('../assets/png/9S.png')),
+    'img10C': Asset.fromModule(require('../assets/png/10C.png')),
+    'img10D': Asset.fromModule(require('../assets/png/10D.png')),
+    'img10H': Asset.fromModule(require('../assets/png/10H.png')),
+    'img10S': Asset.fromModule(require('../assets/png/10S.png')),
+    'imgAC': Asset.fromModule(require('../assets/png/AC.png')),
+    'imgAD': Asset.fromModule(require('../assets/png/AD.png')),
+    'imgAH': Asset.fromModule(require('../assets/png/AH.png')),
+    'imgAS': Asset.fromModule(require('../assets/png/AS.png')),
+    'imgJC': Asset.fromModule(require('../assets/png/JC.png')),
+    'imgJD': Asset.fromModule(require('../assets/png/JD.png')),
+    'imgJH': Asset.fromModule(require('../assets/png/JH.png')),
+    'imgJS': Asset.fromModule(require('../assets/png/JS.png')),
+    'imgKC': Asset.fromModule(require('../assets/png/KC.png')),
+    'imgKD': Asset.fromModule(require('../assets/png/KD.png')),
+    'imgKH': Asset.fromModule(require('../assets/png/KH.png')),
+    'imgKS': Asset.fromModule(require('../assets/png/KS.png')),
+    'imgQC': Asset.fromModule(require('../assets/png/QC.png')),
+    'imgQD': Asset.fromModule(require('../assets/png/QD.png')),
+    'imgQH': Asset.fromModule(require('../assets/png/QH.png')),
+    'imgQS': Asset.fromModule(require('../assets/png/QS.png')),
+};
 
 export default function SingleGame() {
+
+    function _loadAssets() {
+        const promiseArr = [];
+        Object.values(assetCache).forEach(asset => {
+            promiseArr.push(new Promise((resolve, reject) => {
+                asset
+                    .downloadAsync()
+                    .then(asset => {
+                        resolve(asset);
+                    })
+                    .catch(err => reject(err));
+            }));
+        });
+        return Promise.all(promiseArr);
+    }
+
 
     function onContextCreate(gl) {
 
         const {drawingBufferWidth: width, drawingBufferHeight: height} = gl;
-        const sceneColor = 0xdddddd;
-
-        // Create a WebGLRenderer without a DOM element
+        const sceneColor = 0x0000ff;
         const renderer = new Renderer({gl});
         renderer.setSize(width, height);
         renderer.setClearColor(sceneColor);
@@ -335,26 +404,28 @@ export default function SingleGame() {
         const divisions = 24;
         const ambientLight = new AmbientLight(0xFFFFFF);
         scene.add(ambientLight);
-
         const unitSize = height / divisions;
-        const game = new TBGame(scene, Math.floor(height / unitSize), Math.floor(width / unitSize), unitSize);
-        game.currentBrick = TBBrick.generate(game);
-        game.currentBrick.draw();
-        game.nextBrick = TBBrick.generate(game);
-        currentGame["game"] = game;
 
-        currentGame["interval"] = setInterval(() => {
-            if (!game.currentBrick.move(0, -1) && !currentGame.game.isOver) {
-                checkLine();
-                game.currentBrick = game.nextBrick;
-                if (!game.currentBrick.draw()) {
-                    game.currentBrick.remove();
-                    gameOver();
+        _loadAssets().then(assets => {
+            const game = new TBGame(scene, Math.floor(height / unitSize), Math.floor(width / unitSize), unitSize);
+            game.currentBrick = TBBrick.generate(game);
+            game.currentBrick.draw();
+            game.nextBrick = TBBrick.generate(game);
+            currentGame["game"] = game;
+
+            currentGame["interval"] = setInterval(() => {
+                if (!game.currentBrick.move(0, -1) && !currentGame.game.isOver) {
+                    checkLine();
+                    game.currentBrick = game.nextBrick;
+                    if (!game.currentBrick.draw()) {
+                        game.currentBrick.remove();
+                        gameOver();
+                    }
+                    game.nextBrick = TBBrick.generate(game);
                 }
-                game.nextBrick = TBBrick.generate(game);
-            }
-            ;
-        }, 1000);
+                ;
+            }, 1000);
+        });
 
         const render = (millis) => {
             currentGame["timeout"] = requestAnimationFrame(render);
@@ -366,14 +437,22 @@ export default function SingleGame() {
     }
 
     useEffect(() => {
-        if (window) {
-            window.addEventListener("keydown", onKeyDown);
-            return () => {
-                window.removeEventListener("keydown", onKeyDown);
-                cancelAnimationFrame(currentGame.timeout);
-                clearInterval(currentGame.interval);
-            };
-        }
+        let soundHandler;
+        window !== undefined && window.addEventListener("keydown", onKeyDown);
+        new Audio.Sound.createAsync(
+            require('../assets/Tetris.mp3'), {shouldPlay: true, isLooping: true}
+        ).then(({sound, status}) => {
+            soundHandler = sound;
+        });
+
+        return () => {
+            window !== undefined && window.removeEventListener("keydown", onKeyDown);
+            currentGame.timeout && cancelAnimationFrame(currentGame.timeout);
+            currentGame.interval && clearInterval(currentGame.interval);
+            soundHandler.unloadAsync().catch(err => {
+                console.log("Unload warning: " + err)
+            });
+        };
     }, []);
 
     function gameOver() {
@@ -387,7 +466,7 @@ export default function SingleGame() {
         currentGame.game.board.forEach(d => {
             if (d instanceof TBCard) {
                 tmpHist[d.y] = tmpHist[d.y] ? tmpHist[d.y] + 1 : 1;
-                if (tmpHist[d.y] === currentGame.game.width-2) {
+                if (tmpHist[d.y] === currentGame.game.width - 2) {
                     linesToRemove.push(d.y);
                 }
             }
@@ -409,7 +488,7 @@ export default function SingleGame() {
     }
 
     function onDropClick(event) {
-        while(currentGame.game.currentBrick.move(0,-1));
+        while (currentGame.game.currentBrick.move(0, -1)) ;
     };
 
     function onLeftClick(event) {
@@ -452,92 +531,122 @@ export default function SingleGame() {
     }
 
     return (
+
         <View style={{flex: 1}} onKeyPress={onKeyDown}>
             <View style={{flex: 1}}></View>
-            <View style={{flex: 11, flexDirection: 'row'}}>
+            <View style={{height: 500}}>
                 <GLView style={{height: 500, width: 250}}
                         onContextCreate={onContextCreate}
                 />
             </View>
-            <View style={{flex: 3, flexDirection: 'row'}}>
-                <TouchableOpacity style={styles.button} onPress={onLeftClick}>
-                    <Text style={styles.buttonText}></Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.button} onPress={onRightClick}>
-                    <Text style={styles.buttonText}></Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.button} onPress={onRotateClick}>
-                    <Text style={styles.buttonText}></Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.button} onPress={onDownClick}>
-                    <Text style={styles.buttonText}></Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.button} onPress={onDropClick}>
-                    <Text style={styles.buttonText}></Text>
-                </TouchableOpacity>
+            <View style={{height: 120, marginTop:10}}>
+                <View style={{flex: 1, flexDirection: 'row', height: 50}}>
+                    <View style={{flex: 5, flexDirection: 'column'}}>
+                        <View style={{flex: 1}}/>
+                        <View style={{flex: 4}}>
+                            <TouchableOpacity style={styles.button} onPress={onDropClick}>
+                                <Image style={styles.buttonImg} source={require('../assets/png/redButton.png')}/>
+                            </TouchableOpacity>
+                        </View>
+                        <View style={{flex: 1}}/>
+                    </View>
+                    <View style={{flex: 1}}/>
+                    <View style={{flex: 3, flexDirection: 'column'}}>
+                        <View style={{flex: 1}}/>
+                        <View style={{flex: 2}}>
+                            <TouchableOpacity style={styles.button} onPress={onLeftClick}>
+                                <Image style={styles.buttonImg} source={require('../assets/png/grayButton.png')}/>
+                            </TouchableOpacity>
+                        </View>
+                        <View style={{flex: 1}}/>
+                    </View>
+                    <View style={{flex: 3, flexDirection: 'column'}}>
+                        <View style={{flex: 2}}>
+                            <TouchableOpacity style={styles.button} onPress={onRotateClick}>
+                                <Image style={styles.buttonImg} source={require('../assets/png/grayButton.png')}/>
+                            </TouchableOpacity>
+                        </View>
+                        <View style={{flex: 2}}>
+                            <TouchableOpacity style={styles.button} onPress={onDownClick}>
+                                <Image style={styles.buttonImg} source={require('../assets/png/grayButton.png')}/>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                    <View style={{flex: 3, flexDirection: 'column'}}>
+                        <View style={{flex: 1}}/>
+                        <View style={{flex: 2}}>
+                            <TouchableOpacity style={styles.button} onPress={onRightClick}>
+                                <Image style={styles.buttonImg} source={require('../assets/png/grayButton.png')}/>
+                            </TouchableOpacity>
+                        </View>
+                        <View style={{flex: 1}}/>
+                    </View>
+                </View>
             </View>
         </View>
     );
 
-}
 
+}
 const styles = StyleSheet.create({
     button: {
-        width: 100,
-        height: 100,
+        width: '100%',
+        height: '100%',
         alignItems: 'center',
-        padding: 20,
-        borderRadius: 50,
-        backgroundColor: '#3498db'
+        padding: 0,
+        margin: 0,
     },
-    buttonText: {
-        fontSize: 25,
-        color: '#fff'
+    buttonImg: {
+        width: '100%',
+        height: '100%',
+        margin: 0,
+        padding: 0,
+        resizeMode: "stretch"
     }
 });
 
 /*new FontLoader().load(require('../assets/Arial.json'), function (font) {
-    const geometry = new TextGeometry('Hello world!', {
-        font,
-        size: 50,
-        height: 20,
-        color: 'red'
-    });
-    let tmp = new Mesh(geometry, material);
-    tmp.rotation.z = -Math.PI / 2;
-    tmp.position.x = 0;
-    tmp.position.y = 0;
-    scene.add(tmp);
+const geometry = new TextGeometry('Hello world!', {
+font,
+size: 50,
+height: 20,
+color: 'red'
+});
+let tmp = new Mesh(geometry, material);
+tmp.rotation.z = -Math.PI / 2;
+tmp.position.x = 0;
+tmp.position.y = 0;
+scene.add(tmp);
 });*/
 
 /*
-        const unitShape = new Shape();
-        unitShape
-            .moveTo(height / 2, 0)
-            .lineTo(unitShape.currentPoint.x - unitSize, unitShape.currentPoint.y)
-            .lineTo(unitShape.currentPoint.x, unitShape.currentPoint.y - unitSize)
-            .lineTo(unitShape.currentPoint.x + unitSize, unitShape.currentPoint.y)
-            .lineTo(unitShape.currentPoint.x, unitShape.currentPoint.y + unitSize);
-        const unitMesh = new Mesh(new ShapeGeometry(unitShape), unitMaterial);
-        unitMesh.rotation.z = Math.PI / 2;
-        scene.add(unitMesh);*/
+const unitShape = new Shape();
+unitShape
+.moveTo(height / 2, 0)
+.lineTo(unitShape.currentPoint.x - unitSize, unitShape.currentPoint.y)
+.lineTo(unitShape.currentPoint.x, unitShape.currentPoint.y - unitSize)
+.lineTo(unitShape.currentPoint.x + unitSize, unitShape.currentPoint.y)
+.lineTo(unitShape.currentPoint.x, unitShape.currentPoint.y + unitSize);
+const unitMesh = new Mesh(new ShapeGeometry(unitShape), unitMaterial);
+unitMesh.rotation.z = Math.PI / 2;
+scene.add(unitMesh);*/
 
 /*
-  const borders = new Shape();
-        borders.moveTo(-height / 2, -width / 2)
-            .lineTo(height / 2, -width / 2)
-            .lineTo(height / 2, width / 2)
-            .lineTo(-height / 2, width / 2)
-            .lineTo(-height / 2, -width / 2);
-        const bordersIn = new Shape();
-        bordersIn.moveTo(-height / 2 + yOff, -width / 2 + xOff)
-            .lineTo(height / 2, -width / 2 + xOff)
-            .lineTo(height / 2, width / 2 - xOff)
-            .lineTo(-height / 2 + yOff, width / 2 - xOff)
-            .lineTo(-height / 2 + yOff, -width / 2 + xOff);
-        borders.holes.push(bordersIn);
-        const material = new MeshBasicMaterial({color: 0x00ff00});
-        const mesh = new Mesh(new ShapeGeometry(borders), material);
-        mesh.rotation.z = Math.PI / 2;
-        scene.add(mesh);
- */
+const borders = new Shape();
+borders.moveTo(-height / 2, -width / 2)
+.lineTo(height / 2, -width / 2)
+.lineTo(height / 2, width / 2)
+.lineTo(-height / 2, width / 2)
+.lineTo(-height / 2, -width / 2);
+const bordersIn = new Shape();
+bordersIn.moveTo(-height / 2 + yOff, -width / 2 + xOff)
+.lineTo(height / 2, -width / 2 + xOff)
+.lineTo(height / 2, width / 2 - xOff)
+.lineTo(-height / 2 + yOff, width / 2 - xOff)
+.lineTo(-height / 2 + yOff, -width / 2 + xOff);
+borders.holes.push(bordersIn);
+const material = new MeshBasicMaterial({color: 0x00ff00});
+const mesh = new Mesh(new ShapeGeometry(borders), material);
+mesh.rotation.z = Math.PI / 2;
+scene.add(mesh);
+*/
