@@ -1,5 +1,5 @@
 import React, {useEffect} from 'react';
-import {StyleSheet, TouchableOpacity, View, Image} from 'react-native';
+import {StyleSheet, TouchableOpacity, Text, View, Image} from 'react-native';
 import {GLView} from 'expo-gl';
 import {Asset} from 'expo-asset';
 import {Renderer, TextureLoader} from 'expo-three';
@@ -84,7 +84,9 @@ const TBBRICKS_TEMPLATES = [
 
 class TBGame {
     board;
-    point;
+    score;
+    frameNo;
+    speed;
     height;
     width;
     unitSize;
@@ -93,12 +95,15 @@ class TBGame {
     isOver;
     stageInfo;
     stagePlay;
-    msgMesh;
-    lastMsg;
+    msgMeshs;
+    selectedCards;
 
     constructor(stagePlay, stageInfo) {
 
         const DIVISIONS = 22;
+        this.speed = 1000;
+        this.score = 0;
+        this.frameNo = 0;
         this.stagePlay = stagePlay;
         this.stageInfo = stageInfo;
         const tmpHeight = this.stagePlay.renderer.getContext().drawingBufferHeight;
@@ -107,7 +112,10 @@ class TBGame {
         this.height = Math.floor(tmpHeight / this.unitSize)
         this.width = Math.floor(tmpWidth / this.unitSize)
         this.board = [];
+        this.msgMeshs = [];
+        this.selectedCards = [];
         this.point = 0;
+
 
         for (let i = -this.width / 2; i < this.width / 2; i++) {
             for (let j = -this.height / 2; j < this.height / 2; j++) {
@@ -122,28 +130,34 @@ class TBGame {
             }
         }
 
+        for (let i = 0; i < 5; i++) {
+            const infoHeight = this.stageInfo.renderer.getContext().drawingBufferHeight;
+            const infoWidth = this.stageInfo.renderer.getContext().drawingBufferWidth;
+            const tmp = new Drawable(this, this.stageInfo, null, 0xEEEEEE, 1, true, 0x000001, false, 2);
+            tmp.plane.position.x = -infoWidth / 2 + this.unitSize + 10 + i * (this.unitSize * 2 + 5);
+            tmp.plane.position.y = infoHeight / 2 - this.unitSize - 5
+            this.stageInfo.scene.add(tmp.plane);
+        }
         console.log("Game started ", this.height, this.width, this.unitSize);
     }
 
-    setMsg(msg, color) {
-        if (this.msgMesh && msg === this.lastMsg) {
-            return;
-        }
-        this.msgMesh && this.stageInfo.scene.remove(this.msgMesh)
+    setMsg(msgId, msg, color) {
+        let msgMesh = this.msgMeshs[msgId];
+        msgMesh && this.stageInfo.scene.remove(msgMesh)
         const infoHeight = this.stageInfo.renderer.getContext().drawingBufferHeight;
         const infoWidth = this.stageInfo.renderer.getContext().drawingBufferWidth;
         const geometry = new TextGeometry(msg, {
             font: ExpoFonts.helvetiker_bold,
-            size: 10,
-            height: 5,
+            size: 30,
+            height: 10,
         });
-        this.msgMesh = new Mesh(geometry, new MeshBasicMaterial({color}));
-        this.msgMesh.position.y = -infoHeight / 2 + 50;
-        this.msgMesh.position.x = -infoWidth / 2 + 2;
-        this.stageInfo.scene.add(this.msgMesh);
+        msgMesh = new Mesh(geometry, new MeshBasicMaterial({color}));
+        msgMesh.position.y = -infoHeight / 2 + (40 * msgId) - 10;
+        msgMesh.position.x = -infoWidth / 2 + 5;
+        this.stageInfo.scene.add(msgMesh);
+        this.msgMeshs[msgId] = msgMesh;
     }
 }
-
 
 class TBBrick {
     game;
@@ -254,16 +268,17 @@ class TBBrick {
 }
 
 class Drawable {
-    plane;
     x;
     y;
-    game;
+    plane;
     line;
+    game;
     stage;
 
-    constructor(game, stage, asset, color, opacity, ignore, lineColor, lineAnimated) {
+    constructor(game, stage, asset, color, opacity, ignoreGameBoard, lineColor, lineAnimated, scale) {
         this.game = game;
         this.stage = stage;
+        scale = scale || 1;
         let unitMaterial;
         if (asset) {
             const texture = new TextureLoader().load(asset);
@@ -271,8 +286,8 @@ class Drawable {
         } else {
             unitMaterial = new MeshBasicMaterial({color: color, opacity: opacity});
         }
-        this.plane = new Mesh(new PlaneGeometry(this.game.unitSize, this.game.unitSize), unitMaterial);
-        if (!ignore)
+        this.plane = new Mesh(new PlaneGeometry(this.game.unitSize * scale, this.game.unitSize * scale), unitMaterial);
+        if (!ignoreGameBoard)
             game.board.push(this);
         if (lineColor)
             this.line = this.renderLine(lineColor, lineAnimated);
@@ -376,8 +391,8 @@ class TBCard extends Drawable {
     suit;
     rank;
 
-    constructor(game, stage, rank, suit) {
-        super(game, stage, assetCache["img" + rank + suit], null, null, null, 0x00ff00, true);
+    constructor(game, stage, rank, suit, ignoreGameBoard, scale) {
+        super(game, stage, assetCache["img" + rank + suit], null, null, ignoreGameBoard, 0x00ff00, true, scale);
         this.rank = rank;
         this.suit = suit;
     }
@@ -386,6 +401,10 @@ class TBCard extends Drawable {
         const suit = Poker.SUITS[random(Poker.SUITS.length)];
         const rank = Poker.RANKS[random(Poker.RANKS.length)];
         return new TBCard(game, stage, rank, suit);
+    }
+
+    toString() {
+        return this.rank + this.suit;
     }
 }
 
@@ -398,7 +417,6 @@ class TBWall extends Drawable {
         super(game, stage, Asset.fromModule(require('../assets/png/wall.png')));
     }
 }
-
 
 const currentGame = {};
 const assetCache = {
@@ -434,10 +452,10 @@ const assetCache = {
     'img9D': Asset.fromModule(require('../assets/png/9D.png')),
     'img9H': Asset.fromModule(require('../assets/png/9H.png')),
     'img9S': Asset.fromModule(require('../assets/png/9S.png')),
-    'img10C': Asset.fromModule(require('../assets/png/10C.png')),
-    'img10D': Asset.fromModule(require('../assets/png/10D.png')),
-    'img10H': Asset.fromModule(require('../assets/png/10H.png')),
-    'img10S': Asset.fromModule(require('../assets/png/10S.png')),
+    'imgTC': Asset.fromModule(require('../assets/png/TC.png')),
+    'imgTD': Asset.fromModule(require('../assets/png/TD.png')),
+    'imgTH': Asset.fromModule(require('../assets/png/TH.png')),
+    'imgTS': Asset.fromModule(require('../assets/png/TS.png')),
     'imgAC': Asset.fromModule(require('../assets/png/AC.png')),
     'imgAD': Asset.fromModule(require('../assets/png/AD.png')),
     'imgAH': Asset.fromModule(require('../assets/png/AH.png')),
@@ -473,7 +491,6 @@ export default function SingleGame() {
         return Promise.all(promiseArr);
     }
 
-    currentGame.frameNo = 1;
     currentGame.render = (millis) => {
         currentGame["timeout"] = requestAnimationFrame(currentGame.render);
         updateFrame();
@@ -483,7 +500,7 @@ export default function SingleGame() {
         }
         if (currentGame.stageInfo && currentGame.stageInfo.renderer && currentGame.stageInfo.scene) {
             currentGame.stageInfo.renderer.render(currentGame.stageInfo.scene, currentGame.stageInfo.camera);
-            currentGame.stagePlay.renderer.getContext().endFrameEXP();
+            currentGame.stageInfo.renderer.getContext().endFrameEXP();
         }
     };
 
@@ -514,13 +531,12 @@ export default function SingleGame() {
     function onContextCreate(gl) {
         currentGame.stagePlay = prepareScene(gl, 0x0000ff);
         _loadAssets().then(() => {
-            currentGame.speed = 1000;
             const game = new TBGame(currentGame.stagePlay, currentGame.stageInfo);
             game.currentBrick = TBBrick.generate(game, currentGame.stagePlay);
             game.currentBrick.draw();
             game.nextBrick = TBBrick.generate(game, currentGame.stagePlay);
             currentGame.game = game;
-            game.setMsg("Game Speed: " + currentGame.speed, 0x996633);
+            game.setMsg(1, "Score: " + currentGame.game.score, 0x996633);
             step();
         });
 
@@ -547,9 +563,11 @@ export default function SingleGame() {
     }, []);
 
     function updateFrame() {
-        !(currentGame.frameNo++ % 20) && currentGame.game && currentGame.game.board.forEach(d => {
-            if (d.line) d.line.rotation.z += -Math.PI / 2;
-        });
+        if (currentGame.game) {
+            !(currentGame.game.frameNo++ % 20) && currentGame.game.board.forEach(d => {
+                if (d.line) d.line.rotation.z += -Math.PI / 2;
+            });
+        }
     }
 
     function step() {
@@ -564,22 +582,23 @@ export default function SingleGame() {
             }
             game.nextBrick = TBBrick.generate(game, currentGame.stagePlay);
         }
-        currentGame.interval = setTimeout(step, currentGame.speed);
+        currentGame.interval = setTimeout(step, currentGame.game.speed);
     }
 
     function gameOver() {
         currentGame.game.isOver = true;
-        currentGame.game.setMsg("GAME OVER", 0xff0000);
+        currentGame.game.setMsg(2, "GAME OVER", 0xff0000);
         console.log("Game over...");
     }
 
     function checkLine() {
         const tmpHist = {};
         const linesToRemove = [];
-        currentGame.game.board.forEach(d => {
+        let theGame = currentGame.game;
+        theGame.board.forEach(d => {
             if (d instanceof TBCard) {
                 tmpHist[d.y] = tmpHist[d.y] ? tmpHist[d.y] + 1 : 1;
-                if (tmpHist[d.y] === currentGame.game.width - 2) {
+                if (tmpHist[d.y] === theGame.width - 2) {
                     linesToRemove.push(d.y);
                 }
             }
@@ -588,29 +607,49 @@ export default function SingleGame() {
 
             const pokerCards = [];
             linesToRemove.forEach(l => {
-                currentGame.game.board.forEach(d => {
+                theGame.board.forEach(d => {
                     if ((d instanceof TBCard) && d.y === l)
                         pokerCards.push(d);
                 });
+                const selected = Poker.findHighest(pokerCards);
+                if (!theGame.selectedCards.find(x => x.suit == selected.suit && x.rank == selected.rank)) {
+                    const tmp = new TBCard(theGame, theGame.stageInfo, selected.rank, selected.suit, true, 2);
+                    theGame.selectedCards[theGame.selectedCards.length] = tmp;
+                    const infoHeight = theGame.stageInfo.renderer.getContext().drawingBufferHeight;
+                    const infoWidth = theGame.stageInfo.renderer.getContext().drawingBufferWidth;
+                    tmp.plane.position.x = -infoWidth / 2 + theGame.unitSize + 10 + (theGame.selectedCards.length - 1) * (theGame.unitSize * 2 + 5);
+                    tmp.plane.position.y = infoHeight / 2 - theGame.unitSize - 5
+                    theGame.stageInfo.scene.add(tmp.plane);
+                }
+
+                if (theGame.selectedCards.length == 5) {
+                    const ret = Poker.evaluate(theGame.selectedCards);
+                    theGame.score += (7462-ret.score); // Max score 1 min score 7462
+                    theGame.speed += ret.score / 100;
+                    if (theGame.speed > 1000) theGame.speed = 1000;
+                    theGame.setMsg(2, "Rank: " + ret.rank, 0x0022DD);
+                    theGame.selectedCards.forEach(card => {
+                        card.destructor();
+                    });
+                    theGame.selectedCards.length = 0;
+                }
+                pokerCards.length = 0;
             });
-            const {score, rank, cards} = Poker.evaluate(pokerCards);
-            currentGame.score = (currentGame.score ? currentGame.score : 0) + score;
 
             linesToRemove.sort((a, b) => b - a);
             linesToRemove.forEach(l => {
-                currentGame.game.board.forEach(d => {
+                theGame.board.forEach(d => {
                     if ((d instanceof TBCard) && d.y === l)
                         d.destructor();
                 });
-                currentGame.game.board.forEach(d => {
+                theGame.board.forEach(d => {
                     if (d.y > l && (d instanceof TBCard))
                         d.setPos(d.x, d.y - 1);
                 });
             });
-
-            currentGame.speed -= linesToRemove.length * 10;
-            currentGame.game.setMsg("Game Speed: " + currentGame.speed + "\nScore: " + currentGame.score + "\nRank: " + rank, 0x996633);
+            theGame.setMsg(1, "Score: " + theGame.score + " Speed:%" + Math.trunc((1000-theGame.speed)/10), 0x996633);
         }
+        theGame.speed -= 4;
     }
 
     function onDropClick(event) {
