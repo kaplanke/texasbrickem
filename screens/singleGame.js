@@ -1,24 +1,29 @@
-import React, {useState, useEffect} from 'react';
-import {StyleSheet, TouchableOpacity, Text, View, Image} from 'react-native';
+import React, {useEffect} from 'react';
+import {StyleSheet, TouchableOpacity, View, Image} from 'react-native';
 import {GLView} from 'expo-gl';
 import {Asset} from 'expo-asset';
 import {Renderer, TextureLoader} from 'expo-three';
-import {rotate90, rotate270} from '2d-array-rotation';
+import {rotate90} from '2d-array-rotation';
 import {Audio} from 'expo-av';
 import {
-    FontLoader,
     TextGeometry,
     AmbientLight,
-    GridHelper,
     Mesh,
     MeshBasicMaterial,
     OrthographicCamera,
     Scene,
-    Shape,
-    ShapeGeometry,
+    BufferGeometry,
+    LineBasicMaterial,
+    Line,
+    LineSegments,
     PlaneGeometry,
-    Vector3
+    Vector3,
+    Float32BufferAttribute,
+    VertexColors,
+    Color
 } from 'three';
+import {ExpoFonts} from "../assets/fonts";
+import Poker from "../engine/poker";
 
 function random(maxExclude) {
     return Math.floor(Math.random() * maxExclude);
@@ -77,31 +82,6 @@ const TBBRICKS_TEMPLATES = [
     ]
 ]
 
-const TB_SUITS = {
-    suits: ['D', 'H', 'C', 'S'],
-    S_D: 'D',
-    S_H: 'H',
-    S_C: 'C',
-    S_S: 'S'
-}
-
-const TB_RANKS = {
-    ranks: ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'],
-    R_A: 'A',
-    R_2: '2',
-    R_3: '3',
-    R_4: '4',
-    R_5: '5',
-    R_6: '6',
-    R_7: '7',
-    R_8: '8',
-    R_9: '9',
-    R_10: '10',
-    R_J: 'J',
-    R_Q: 'Q',
-    R_K: 'K'
-}
-
 class TBGame {
     board;
     point;
@@ -110,55 +90,88 @@ class TBGame {
     unitSize;
     currentBrick;
     nextBrick;
-    scene;
     isOver;
+    stageInfo;
+    stagePlay;
+    msgMesh;
+    lastMsg;
 
-    constructor(scene, height, width, unitSize) {
-        this.height = height;
-        this.width = width;
+    constructor(stagePlay, stageInfo) {
+
+        const DIVISIONS = 22;
+        this.stagePlay = stagePlay;
+        this.stageInfo = stageInfo;
+        const tmpHeight = this.stagePlay.renderer.getContext().drawingBufferHeight;
+        const tmpWidth = this.stagePlay.renderer.getContext().drawingBufferWidth;
+        this.unitSize = tmpHeight / DIVISIONS;
+        this.height = Math.floor(tmpHeight / this.unitSize)
+        this.width = Math.floor(tmpWidth / this.unitSize)
         this.board = [];
         this.point = 0;
-        this.unitSize = unitSize;
-        this.scene = scene;
 
-        for (let i = -width / 2; i < width / 2; i++) {
-            for (let j = -height / 2; j < height / 2; j++) {
-                if (i == -width / 2 || i == width / 2 - 1 || j == -height / 2)
-                    new TBWall(this).draw(i, j);
+        for (let i = -this.width / 2; i < this.width / 2; i++) {
+            for (let j = -this.height / 2; j < this.height / 2; j++) {
+                if (i == -this.width / 2 || i == this.width / 2 - 1 || j == -this.height / 2)
+                    new TBWall(this, this.stagePlay).draw(i, j);
                 else {
                     if ((i + j) % 2)
-                        new Drawable(this, null, 0x0000FF, 1, true).draw(i, j);
+                        new Drawable(this, this.stagePlay, null, 0x0000FF, 1, true).draw(i, j);
                     else
-                        new Drawable(this, null, 0x0000AA, 1, true).draw(i, j);
+                        new Drawable(this, this.stagePlay, null, 0x0000AA, 1, true).draw(i, j);
                 }
             }
         }
-        console.log("Game started ", height, width, unitSize);
 
+        console.log("Game started ", this.height, this.width, this.unitSize);
     }
-};
+
+    setMsg(msg, color) {
+        if (this.msgMesh && msg === this.lastMsg) {
+            return;
+        }
+        this.msgMesh && this.stageInfo.scene.remove(this.msgMesh)
+        const infoHeight = this.stageInfo.renderer.getContext().drawingBufferHeight;
+        const infoWidth = this.stageInfo.renderer.getContext().drawingBufferWidth;
+        const geometry = new TextGeometry(msg, {
+            font: ExpoFonts.helvetiker_bold,
+            size: 10,
+            height: 5,
+        });
+        this.msgMesh = new Mesh(geometry, new MeshBasicMaterial({color}));
+        this.msgMesh.position.y = -infoHeight / 2 + 50;
+        this.msgMesh.position.x = -infoWidth / 2 + 2;
+        this.stageInfo.scene.add(this.msgMesh);
+    }
+}
+
 
 class TBBrick {
     game;
+    stage;
     matrix = [];
 
-    static generate(game) {
+    static generate(game, stage) {
         const template = rotate90(TBBRICKS_TEMPLATES[random(TBBRICKS_TEMPLATES.length)]);
         const ret = new TBBrick();
         ret.game = game;
-        ret.matrix = new Array(template.length).fill(null).map(x => new Array(template.length).fill(null));
+        ret.stage = stage;
+        ret.matrix = new Array(template.length).fill(null).map(() => new Array(template.length).fill(null));
         template.forEach(
             (x, xIdx) => x.forEach(
                 (y, yIdx) => {
-                    y ? ret.matrix[xIdx][yIdx] = TBCard.generate(game) : null;
+                    y ? ret.matrix[xIdx][yIdx] = TBCard.generate(game, stage) : null;
                 }
             )
         );
         return ret;
     }
 
-    remove() {
+    /*remove() {
         this.matrix.flat().forEach(d => d && d.destructor());
+    }*/
+
+    makePassive() {
+        this.matrix.flat().forEach(d => d && d.makePassive());
     }
 
     draw() {
@@ -171,30 +184,33 @@ class TBBrick {
                 }
             )
         );
-        return this.move(-2, this.game.height / 2 - 4);
+        return this.move(-2, this.game.height / 2 - 4, true);
     };
 
-    move(xDelta, yDelta) {
+    move(xDelta, yDelta, forceDraw) {
 
         //detect collision
         const fm = this.matrix.flat();
-        if (fm.find(m => {
+        const collidesWith = fm.find(m => {
             return m && this.game.board.find(b =>
                 b.x === (m.x + xDelta) &&
                 b.y === (m.y + yDelta) &&
                 !fm.find(m2 => m2 === b))
-        })) return false;
+        });
+
+        if (!forceDraw && collidesWith)
+            return false;
 
         this.matrix.forEach(
-            (x, xIdx) => x.forEach(
-                (y, yIdx) => {
+            (x) => x.forEach(
+                (y) => {
                     if (y) {
                         y.setPos(y.x + xDelta, y.y + yDelta);
                     }
                 }
             )
         );
-        return true;
+        return collidesWith ? false : true;
     };
 
     rotate() {
@@ -242,9 +258,12 @@ class Drawable {
     x;
     y;
     game;
+    line;
+    stage;
 
-    constructor(game, asset, color, opacity, ignore) {
+    constructor(game, stage, asset, color, opacity, ignore, lineColor, lineAnimated) {
         this.game = game;
+        this.stage = stage;
         let unitMaterial;
         if (asset) {
             const texture = new TextureLoader().load(asset);
@@ -255,21 +274,94 @@ class Drawable {
         this.plane = new Mesh(new PlaneGeometry(this.game.unitSize, this.game.unitSize), unitMaterial);
         if (!ignore)
             game.board.push(this);
+        if (lineColor)
+            this.line = this.renderLine(lineColor, lineAnimated);
+    }
+
+    renderLine(color, animated) {
+        const unitSize = this.game.unitSize;
+        const points = [
+            new Vector3(-unitSize / 2, -unitSize / 2, 0),
+            new Vector3(unitSize / 2, -unitSize / 2, 0),
+            new Vector3(unitSize / 2, unitSize / 2, 0),
+            new Vector3(-unitSize / 2, unitSize / 2, 0),
+            new Vector3(-unitSize / 2, -unitSize / 2, 0)
+        ];
+        if (animated) {
+            const colors = [];
+            const tmpPoints = points.map((point, idx) => {
+                const tmp = [];
+                let delta;
+                if (idx == 0) {
+                    delta = new Vector3(unitSize / 10, 0, 0);
+                }
+                if (idx == 1) {
+                    delta = new Vector3(0, unitSize / 10, 0);
+                }
+                if (idx == 2) {
+                    delta = new Vector3(-unitSize / 10, 0, 0);
+                }
+                if (idx == 3) {
+                    delta = new Vector3(0, -unitSize / 10, 0);
+                }
+                const colorObj = new Color(color);
+                if (delta) {
+                    const deltaColor = new Color(colorObj.r / 32, colorObj.g / 32, colorObj.b / 32);
+                    for (let i = 0; i < 10; i++) {
+                        tmp.push(point.clone().add(delta.clone().multiplyScalar(i)));
+                        tmp.push(point.clone().add(delta.clone().multiplyScalar(i + 1)));
+                        colors.push(colorObj.clone().add(deltaColor.clone().multiplyScalar(-1 * idx * 10 - i)));
+                        colors.push(colorObj.clone().add(deltaColor.clone().multiplyScalar(-1 * idx * 10 - i - 1)));
+                    }
+                }
+                return tmp;
+            }).flat().map(v => [v.x, v.y, v.z]).flat();
+            const colorsArr = colors.map(c => [c.r, c.g, c.b]).flat();
+            const geometry = new BufferGeometry();
+            geometry.setAttribute('position', new Float32BufferAttribute(tmpPoints, 3));
+            geometry.setAttribute('color', new Float32BufferAttribute(colorsArr, 3));
+            geometry.setAttribute('color', new Float32BufferAttribute(colorsArr, 3));
+            let material = new LineBasicMaterial({vertexColors: VertexColors, linewidth: 100.0});
+            return new LineSegments(geometry, material);
+        } else {
+            const material = new LineBasicMaterial({
+                color: color,
+                linewidth: 1
+            });
+            const geometry = new BufferGeometry().setFromPoints(points);
+            return new Line(geometry, material);
+        }
     }
 
     destructor() {
-        this.game.scene.remove(this.plane);
+        this.stage.scene.remove(this.plane);
+        if (this.line) {
+            this.stage.scene.remove(this.line);
+        }
         this.game.board = this.game.board.filter(x => x !== this);
     }
 
     draw(x, y) {
-        this.game.scene.add(this.plane);
+        this.stage.scene.add(this.plane);
         this.setPos(x, y);
+        if (this.line)
+            this.stage.scene.add(this.line);
     };
+
+    makePassive() {
+        this.stage.scene.remove(this.line);
+        this.line = this.renderLine(0x666666);
+        this.stage.scene.add(this.line);
+        this.setPos(this.x, this.y);
+    }
 
     setPos(x, y) {
         this.plane.position.x = x * this.game.unitSize + this.game.unitSize / 2;
         this.plane.position.y = y * this.game.unitSize + this.game.unitSize / 2;
+        if (this.line) {
+            this.line.position.x = this.plane.position.x;
+            this.line.position.y = this.plane.position.y;
+        }
         this.x = x;
         this.y = y;
     }
@@ -284,30 +376,28 @@ class TBCard extends Drawable {
     suit;
     rank;
 
-    constructor(game, rank, suit) {
-        super(game, assetCache["img" + rank + suit]);
+    constructor(game, stage, rank, suit) {
+        super(game, stage, assetCache["img" + rank + suit], null, null, null, 0x00ff00, true);
         this.rank = rank;
         this.suit = suit;
     }
 
-    static generate(game) {
-        const suit = TB_SUITS.suits[random(TB_SUITS.suits.length)];
-        const rank = TB_RANKS.ranks[random(TB_RANKS.ranks.length)];
-        const ret = new TBCard(game, rank, suit);
-        return ret;
+    static generate(game, stage) {
+        const suit = Poker.SUITS[random(Poker.SUITS.length)];
+        const rank = Poker.RANKS[random(Poker.RANKS.length)];
+        return new TBCard(game, stage, rank, suit);
     }
-
-};
+}
 
 class TBWall extends Drawable {
     plane;
     x;
     y;
 
-    constructor(game) {
-        super(game, Asset.fromModule(require('../assets/png/wall.png')));
+    constructor(game, stage) {
+        super(game, stage, Asset.fromModule(require('../assets/png/wall.png')));
     }
-};
+}
 
 
 const currentGame = {};
@@ -383,11 +473,23 @@ export default function SingleGame() {
         return Promise.all(promiseArr);
     }
 
+    currentGame.frameNo = 1;
+    currentGame.render = (millis) => {
+        currentGame["timeout"] = requestAnimationFrame(currentGame.render);
+        updateFrame();
+        if (currentGame.stagePlay && currentGame.stagePlay.renderer && currentGame.stagePlay.scene) {
+            currentGame.stagePlay.renderer.render(currentGame.stagePlay.scene, currentGame.stagePlay.camera);
+            currentGame.stagePlay.renderer.getContext().endFrameEXP();
+        }
+        if (currentGame.stageInfo && currentGame.stageInfo.renderer && currentGame.stageInfo.scene) {
+            currentGame.stageInfo.renderer.render(currentGame.stageInfo.scene, currentGame.stageInfo.camera);
+            currentGame.stagePlay.renderer.getContext().endFrameEXP();
+        }
+    };
 
-    function onContextCreate(gl) {
 
+    function prepareScene(gl, sceneColor) {
         const {drawingBufferWidth: width, drawingBufferHeight: height} = gl;
-        const sceneColor = 0x0000ff;
         const renderer = new Renderer({gl});
         renderer.setSize(width, height);
         renderer.setClearColor(sceneColor);
@@ -400,40 +502,29 @@ export default function SingleGame() {
         camera.lookAt(new Vector3(0, 0, 0));
         const scene = new Scene();
         scene.add(camera);
-
-        const divisions = 24;
         const ambientLight = new AmbientLight(0xFFFFFF);
         scene.add(ambientLight);
-        const unitSize = height / divisions;
+        return {scene, camera, renderer};
+    }
 
-        _loadAssets().then(assets => {
-            const game = new TBGame(scene, Math.floor(height / unitSize), Math.floor(width / unitSize), unitSize);
-            game.currentBrick = TBBrick.generate(game);
+    function onContextCreateNext(gl) {
+        currentGame.stageInfo = prepareScene(gl, 0xCCCCCC);
+    }
+
+    function onContextCreate(gl) {
+        currentGame.stagePlay = prepareScene(gl, 0x0000ff);
+        _loadAssets().then(() => {
+            currentGame.speed = 1000;
+            const game = new TBGame(currentGame.stagePlay, currentGame.stageInfo);
+            game.currentBrick = TBBrick.generate(game, currentGame.stagePlay);
             game.currentBrick.draw();
-            game.nextBrick = TBBrick.generate(game);
-            currentGame["game"] = game;
-
-            currentGame["interval"] = setInterval(() => {
-                if (!game.currentBrick.move(0, -1) && !currentGame.game.isOver) {
-                    checkLine();
-                    game.currentBrick = game.nextBrick;
-                    if (!game.currentBrick.draw()) {
-                        game.currentBrick.remove();
-                        gameOver();
-                    }
-                    game.nextBrick = TBBrick.generate(game);
-                }
-                ;
-            }, 1000);
+            game.nextBrick = TBBrick.generate(game, currentGame.stagePlay);
+            currentGame.game = game;
+            game.setMsg("Game Speed: " + currentGame.speed, 0x996633);
+            step();
         });
 
-        const render = (millis) => {
-            currentGame["timeout"] = requestAnimationFrame(render);
-            //update();
-            renderer.render(scene, camera);
-            gl.endFrameEXP();
-        };
-        render();
+        currentGame.render();
     }
 
     useEffect(() => {
@@ -441,7 +532,7 @@ export default function SingleGame() {
         window !== undefined && window.addEventListener("keydown", onKeyDown);
         new Audio.Sound.createAsync(
             require('../assets/Tetris.mp3'), {shouldPlay: true, isLooping: true}
-        ).then(({sound, status}) => {
+        ).then(({sound}) => {
             soundHandler = sound;
         });
 
@@ -455,8 +546,30 @@ export default function SingleGame() {
         };
     }, []);
 
+    function updateFrame() {
+        !(currentGame.frameNo++ % 20) && currentGame.game && currentGame.game.board.forEach(d => {
+            if (d.line) d.line.rotation.z += -Math.PI / 2;
+        });
+    }
+
+    function step() {
+        const game = currentGame.game;
+        if (!game.currentBrick.move(0, -1) && !currentGame.game.isOver) {
+            game.currentBrick.makePassive();
+            checkLine();
+            game.currentBrick = game.nextBrick;
+            if (!game.currentBrick.draw()) {
+                game.currentBrick.makePassive();
+                gameOver();
+            }
+            game.nextBrick = TBBrick.generate(game, currentGame.stagePlay);
+        }
+        currentGame.interval = setTimeout(step, currentGame.speed);
+    }
+
     function gameOver() {
         currentGame.game.isOver = true;
+        currentGame.game.setMsg("GAME OVER", 0xff0000);
         console.log("Game over...");
     }
 
@@ -472,7 +585,17 @@ export default function SingleGame() {
             }
         });
         if (linesToRemove.length > 0) {
-            //TODO:poker
+
+            const pokerCards = [];
+            linesToRemove.forEach(l => {
+                currentGame.game.board.forEach(d => {
+                    if ((d instanceof TBCard) && d.y === l)
+                        pokerCards.push(d);
+                });
+            });
+            const {score, rank, cards} = Poker.evaluate(pokerCards);
+            currentGame.score = (currentGame.score ? currentGame.score : 0) + score;
+
             linesToRemove.sort((a, b) => b - a);
             linesToRemove.forEach(l => {
                 currentGame.game.board.forEach(d => {
@@ -484,49 +607,47 @@ export default function SingleGame() {
                         d.setPos(d.x, d.y - 1);
                 });
             });
+
+            currentGame.speed -= linesToRemove.length * 10;
+            currentGame.game.setMsg("Game Speed: " + currentGame.speed + "\nScore: " + currentGame.score + "\nRank: " + rank, 0x996633);
         }
     }
 
     function onDropClick(event) {
         while (currentGame.game.currentBrick.move(0, -1)) ;
-    };
+    }
 
     function onLeftClick(event) {
         currentGame.game.currentBrick.move(-1, 0);
-    };
+    }
 
     function onRightClick(event) {
         currentGame.game.currentBrick.move(1, 0);
-    };
+    }
 
     function onDownClick(event) {
         currentGame.game.currentBrick.move(0, -1);
-    };
+    }
 
     function onRotateClick(event) {
         currentGame.game.currentBrick.rotate();
-    };
+    }
 
     function onKeyDown(event) {
         if ("ArrowLeft" === event.key) {
             onLeftClick(event);
-            return;
         }
         if ("ArrowRight" === event.key) {
             onRightClick(event);
-            return;
         }
         if ("ArrowDown" === event.key) {
             onDownClick(event);
-            return;
         }
         if ("ArrowUp" === event.key) {
             onRotateClick(event);
-            return;
         }
         if ("Enter" === event.key || " " === event.key) {
             onDropClick(event);
-            return;
         }
     }
 
@@ -534,12 +655,19 @@ export default function SingleGame() {
 
         <View style={{flex: 1}} onKeyPress={onKeyDown}>
             <View style={{flex: 1}}></View>
-            <View style={{height: 500}}>
-                <GLView style={{height: 500, width: 250}}
+            <View style={{height: 440}}>
+                <GLView style={{height: 440, width: 240}}
                         onContextCreate={onContextCreate}
                 />
             </View>
-            <View style={{height: 120, marginTop:10}}>
+            <View style={{height: 100}}>
+                <View style={{width: 240}}>
+                    <GLView style={{height: 100, width: 240}}
+                            onContextCreate={onContextCreateNext}
+                    />
+                </View>
+            </View>
+            <View style={{height: 120, marginTop: 10}}>
                 <View style={{flex: 1, flexDirection: 'row', height: 50}}>
                     <View style={{flex: 5, flexDirection: 'column'}}>
                         <View style={{flex: 1}}/>
@@ -585,9 +713,8 @@ export default function SingleGame() {
             </View>
         </View>
     );
-
-
 }
+
 const styles = StyleSheet.create({
     button: {
         width: '100%',
@@ -604,49 +731,3 @@ const styles = StyleSheet.create({
         resizeMode: "stretch"
     }
 });
-
-/*new FontLoader().load(require('../assets/Arial.json'), function (font) {
-const geometry = new TextGeometry('Hello world!', {
-font,
-size: 50,
-height: 20,
-color: 'red'
-});
-let tmp = new Mesh(geometry, material);
-tmp.rotation.z = -Math.PI / 2;
-tmp.position.x = 0;
-tmp.position.y = 0;
-scene.add(tmp);
-});*/
-
-/*
-const unitShape = new Shape();
-unitShape
-.moveTo(height / 2, 0)
-.lineTo(unitShape.currentPoint.x - unitSize, unitShape.currentPoint.y)
-.lineTo(unitShape.currentPoint.x, unitShape.currentPoint.y - unitSize)
-.lineTo(unitShape.currentPoint.x + unitSize, unitShape.currentPoint.y)
-.lineTo(unitShape.currentPoint.x, unitShape.currentPoint.y + unitSize);
-const unitMesh = new Mesh(new ShapeGeometry(unitShape), unitMaterial);
-unitMesh.rotation.z = Math.PI / 2;
-scene.add(unitMesh);*/
-
-/*
-const borders = new Shape();
-borders.moveTo(-height / 2, -width / 2)
-.lineTo(height / 2, -width / 2)
-.lineTo(height / 2, width / 2)
-.lineTo(-height / 2, width / 2)
-.lineTo(-height / 2, -width / 2);
-const bordersIn = new Shape();
-bordersIn.moveTo(-height / 2 + yOff, -width / 2 + xOff)
-.lineTo(height / 2, -width / 2 + xOff)
-.lineTo(height / 2, width / 2 - xOff)
-.lineTo(-height / 2 + yOff, width / 2 - xOff)
-.lineTo(-height / 2 + yOff, -width / 2 + xOff);
-borders.holes.push(bordersIn);
-const material = new MeshBasicMaterial({color: 0x00ff00});
-const mesh = new Mesh(new ShapeGeometry(borders), material);
-mesh.rotation.z = Math.PI / 2;
-scene.add(mesh);
-*/
