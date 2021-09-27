@@ -1,6 +1,6 @@
 import {StatusBar} from 'expo-status-bar';
 import React, {useState} from 'react';
-import {StyleSheet, TouchableOpacity, Text, View} from 'react-native';
+import {StyleSheet, TouchableOpacity, Text, View, SafeAreaView, ImageBackground} from 'react-native';
 import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import ScreenTemplate from "./screens/_screenTemplate";
@@ -12,20 +12,27 @@ export default function App() {
 
     function MainPage({navigation}) {
         return (
-            <View style={styles.mp}>
-                <TouchableOpacity
-                    style={styles.mpButton}
-                    onPress={() => {
-                        navigation.navigate('SingleGame')
-                    }}
-                ><Text style={styles.mpButtonText}>Single Game</Text></TouchableOpacity>
-                <TouchableOpacity
-                    style={styles.mpButton}
-                    onPress={() => {
-                    }}
-                ><Text style={styles.mpButtonText}>Join Tournament</Text></TouchableOpacity>
-                <StatusBar style="auto"/>
-            </View>
+            <SafeAreaView style={{flex: 1, width: '100%', height: '100%'}}>
+                <ImageBackground
+                    style={{flex: 1, width: '100%', height: '100%',  alignItems: 'center',
+                        justifyContent: 'center'}}
+                    imageStyle={{resizeMode: 'repeat'}}
+                    source={require('./assets/bg.png')}>
+
+                    <TouchableOpacity
+                        style={styles.mpButton}
+                        onPress={() => {
+                            navigation.navigate('SingleGame')
+                        }}
+                    ><Text style={styles.mpButtonText}>Single Game</Text></TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.mpButton}
+                        onPress={() => {
+                        }}
+                    ><Text style={styles.mpButtonText}>Join Tournament</Text></TouchableOpacity>
+                    <StatusBar style="auto"/>
+                </ImageBackground>
+            </SafeAreaView>
         );
     }
 
@@ -40,12 +47,6 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-    mp: {
-        flex: 1,
-        backgroundColor: '#fff',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
     mpButton: {
         width: "50%",
         alignItems: 'center',

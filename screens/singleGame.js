@@ -1,5 +1,14 @@
-import React, {useEffect} from 'react';
-import {StyleSheet, TouchableOpacity, Text, View, Image} from 'react-native';
+import React, {useEffect, useState} from 'react';
+import {
+    ActivityIndicator,
+    StyleSheet,
+    TouchableOpacity,
+    Text,
+    View,
+    Image,
+    Platform,
+    ActivityIndicatorComponent
+} from 'react-native';
 import {GLView} from 'expo-gl';
 import {Asset} from 'expo-asset';
 import {Renderer, TextureLoader} from 'expo-three';
@@ -146,13 +155,13 @@ class TBGame {
         msgMesh && this.stageInfo.scene.remove(msgMesh)
         const infoHeight = this.stageInfo.renderer.getContext().drawingBufferHeight;
         const infoWidth = this.stageInfo.renderer.getContext().drawingBufferWidth;
+        const size = (Platform.OS === 'web') ? 10 : 30;
         const geometry = new TextGeometry(msg, {
             font: ExpoFonts.helvetiker_bold,
-            size: 30,
-            height: 10,
+            size,
         });
         msgMesh = new Mesh(geometry, new MeshBasicMaterial({color}));
-        msgMesh.position.y = -infoHeight / 2 + (40 * msgId) - 10;
+        msgMesh.position.y = -infoHeight / 2 + (size * 2 * msgId);
         msgMesh.position.x = -infoWidth / 2 + 5;
         this.stageInfo.scene.add(msgMesh);
         this.msgMeshs[msgId] = msgMesh;
@@ -414,12 +423,16 @@ class TBWall extends Drawable {
     y;
 
     constructor(game, stage) {
-        super(game, stage, Asset.fromModule(require('../assets/png/wall.png')));
+        super(game, stage, assetCache.wall);
     }
 }
 
 const currentGame = {};
+
 const assetCache = {
+    'redButton': Asset.fromModule(require('../assets/png/redButton.png')),
+    'grayButton': Asset.fromModule(require('../assets/png/grayButton.png')),
+    'wall': Asset.fromModule(require('../assets/png/wall.png')),
     'img2C': Asset.fromModule(require('../assets/png/2C.png')),
     'img2D': Asset.fromModule(require('../assets/png/2D.png')),
     'img2H': Asset.fromModule(require('../assets/png/2H.png')),
@@ -491,20 +504,6 @@ export default function SingleGame() {
         return Promise.all(promiseArr);
     }
 
-    currentGame.render = (millis) => {
-        currentGame["timeout"] = requestAnimationFrame(currentGame.render);
-        updateFrame();
-        if (currentGame.stagePlay && currentGame.stagePlay.renderer && currentGame.stagePlay.scene) {
-            currentGame.stagePlay.renderer.render(currentGame.stagePlay.scene, currentGame.stagePlay.camera);
-            currentGame.stagePlay.renderer.getContext().endFrameEXP();
-        }
-        if (currentGame.stageInfo && currentGame.stageInfo.renderer && currentGame.stageInfo.scene) {
-            currentGame.stageInfo.renderer.render(currentGame.stageInfo.scene, currentGame.stageInfo.camera);
-            currentGame.stageInfo.renderer.getContext().endFrameEXP();
-        }
-    };
-
-
     function prepareScene(gl, sceneColor) {
         const {drawingBufferWidth: width, drawingBufferHeight: height} = gl;
         const renderer = new Renderer({gl});
@@ -524,43 +523,15 @@ export default function SingleGame() {
         return {scene, camera, renderer};
     }
 
-    function onContextCreateNext(gl) {
-        currentGame.stageInfo = prepareScene(gl, 0xCCCCCC);
+    function initGame() {
+        const game = new TBGame(currentGame.stagePlay, currentGame.stageInfo);
+        game.currentBrick = TBBrick.generate(game, currentGame.stagePlay);
+        game.currentBrick.draw();
+        game.nextBrick = TBBrick.generate(game, currentGame.stagePlay);
+        currentGame.game = game;
+        game.setMsg(1, "Score: " + currentGame.game.score, 0xFFEF81);
+        step();
     }
-
-    function onContextCreate(gl) {
-        currentGame.stagePlay = prepareScene(gl, 0x0000ff);
-        _loadAssets().then(() => {
-            const game = new TBGame(currentGame.stagePlay, currentGame.stageInfo);
-            game.currentBrick = TBBrick.generate(game, currentGame.stagePlay);
-            game.currentBrick.draw();
-            game.nextBrick = TBBrick.generate(game, currentGame.stagePlay);
-            currentGame.game = game;
-            game.setMsg(1, "Score: " + currentGame.game.score, 0x996633);
-            step();
-        });
-
-        currentGame.render();
-    }
-
-    useEffect(() => {
-        let soundHandler;
-        window !== undefined && window.addEventListener("keydown", onKeyDown);
-        new Audio.Sound.createAsync(
-            require('../assets/Tetris.mp3'), {shouldPlay: true, isLooping: true}
-        ).then(({sound}) => {
-            soundHandler = sound;
-        });
-
-        return () => {
-            window !== undefined && window.removeEventListener("keydown", onKeyDown);
-            currentGame.timeout && cancelAnimationFrame(currentGame.timeout);
-            currentGame.interval && clearInterval(currentGame.interval);
-            soundHandler.unloadAsync().catch(err => {
-                console.log("Unload warning: " + err)
-            });
-        };
-    }, []);
 
     function updateFrame() {
         if (currentGame.game) {
@@ -624,7 +595,7 @@ export default function SingleGame() {
 
                 if (theGame.selectedCards.length == 5) {
                     const ret = Poker.evaluate(theGame.selectedCards);
-                    theGame.score += (7462-ret.score); // Max score 1 min score 7462
+                    theGame.score += (7462 - ret.score); // Max score 1 min score 7462
                     theGame.speed += ret.score / 100;
                     if (theGame.speed > 1000) theGame.speed = 1000;
                     theGame.setMsg(2, "Rank: " + ret.rank, 0x0022DD);
@@ -647,9 +618,62 @@ export default function SingleGame() {
                         d.setPos(d.x, d.y - 1);
                 });
             });
-            theGame.setMsg(1, "Score: " + theGame.score + " Speed:%" + Math.trunc((1000-theGame.speed)/10), 0x996633);
         }
         theGame.speed -= 4;
+        theGame.setMsg(1, "Score: " + theGame.score + " Speed:%" + Math.trunc((1000 - theGame.speed) / 10), 0xFFEF81);
+    }
+
+     useEffect(() => {
+        let soundHandler;
+        window !== undefined && window.addEventListener("keydown", onKeyDown);
+        new Audio.Sound.createAsync(
+            require('../assets/Tetris.mp3'), {shouldPlay: true, isLooping: true}
+        ).then(({sound}) => {
+            soundHandler = sound;
+        });
+
+        return () => {
+            window !== undefined && window.removeEventListener("keydown", onKeyDown);
+            currentGame.timeout && cancelAnimationFrame(currentGame.timeout);
+            currentGame.interval && clearTimeout(currentGame.interval);
+            for (var key in currentGame){
+                if (currentGame.hasOwnProperty(key)){
+                    delete currentGame[key];
+                }
+            }
+            soundHandler.unloadAsync().catch(err => {
+                console.log("Unload warning: " + err)
+            });
+        };
+    }, []);
+
+    const [assetsLoaded, setAssetsLoaded] = useState(false);
+    _loadAssets().then(() => {
+        setAssetsLoaded(true);
+    });
+
+    currentGame.render = (millis) => {
+        if (currentGame.render)
+            currentGame.timeout = requestAnimationFrame(currentGame.render);
+        if (currentGame.stagePlay && currentGame.stageInfo && assetsLoaded) {
+            if (!currentGame.game) {
+                initGame();
+            }
+            updateFrame();
+            currentGame.stagePlay.renderer.render(currentGame.stagePlay.scene, currentGame.stagePlay.camera);
+            currentGame.stagePlay.renderer.getContext().endFrameEXP();
+            currentGame.stageInfo.renderer.render(currentGame.stageInfo.scene, currentGame.stageInfo.camera);
+            currentGame.stageInfo.renderer.getContext().endFrameEXP();
+        }
+    }
+
+    currentGame.render();
+
+    function onContextCreateInfo(gl) {
+        currentGame.stageInfo = prepareScene(gl, 0x8080FF);
+    }
+    function onContextCreate(gl) {
+        currentGame.stagePlay = prepareScene(gl, 0x0000ff);
     }
 
     function onDropClick(event) {
@@ -690,8 +714,7 @@ export default function SingleGame() {
         }
     }
 
-    return (
-
+    let gameView = (
         <View style={{flex: 1}} onKeyPress={onKeyDown}>
             <View style={{flex: 1}}></View>
             <View style={{height: 440}}>
@@ -702,7 +725,7 @@ export default function SingleGame() {
             <View style={{height: 100}}>
                 <View style={{width: 240}}>
                     <GLView style={{height: 100, width: 240}}
-                            onContextCreate={onContextCreateNext}
+                            onContextCreate={onContextCreateInfo}
                     />
                 </View>
             </View>
@@ -712,7 +735,8 @@ export default function SingleGame() {
                         <View style={{flex: 1}}/>
                         <View style={{flex: 4}}>
                             <TouchableOpacity style={styles.button} onPress={onDropClick}>
-                                <Image style={styles.buttonImg} source={require('../assets/png/redButton.png')}/>
+                                <Image style={styles.buttonImg}
+                                       source={assetCache.redButton}/>
                             </TouchableOpacity>
                         </View>
                         <View style={{flex: 1}}/>
@@ -722,7 +746,8 @@ export default function SingleGame() {
                         <View style={{flex: 1}}/>
                         <View style={{flex: 2}}>
                             <TouchableOpacity style={styles.button} onPress={onLeftClick}>
-                                <Image style={styles.buttonImg} source={require('../assets/png/grayButton.png')}/>
+                                <Image style={styles.buttonImg}
+                                       source={assetCache.grayButton}/>
                             </TouchableOpacity>
                         </View>
                         <View style={{flex: 1}}/>
@@ -730,12 +755,14 @@ export default function SingleGame() {
                     <View style={{flex: 3, flexDirection: 'column'}}>
                         <View style={{flex: 2}}>
                             <TouchableOpacity style={styles.button} onPress={onRotateClick}>
-                                <Image style={styles.buttonImg} source={require('../assets/png/grayButton.png')}/>
+                                <Image style={styles.buttonImg}
+                                       source={assetCache.grayButton}/>
                             </TouchableOpacity>
                         </View>
                         <View style={{flex: 2}}>
                             <TouchableOpacity style={styles.button} onPress={onDownClick}>
-                                <Image style={styles.buttonImg} source={require('../assets/png/grayButton.png')}/>
+                                <Image style={styles.buttonImg}
+                                       source={assetCache.grayButton}/>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -743,7 +770,8 @@ export default function SingleGame() {
                         <View style={{flex: 1}}/>
                         <View style={{flex: 2}}>
                             <TouchableOpacity style={styles.button} onPress={onRightClick}>
-                                <Image style={styles.buttonImg} source={require('../assets/png/grayButton.png')}/>
+                                <Image style={styles.buttonImg}
+                                       source={assetCache.grayButton}/>
                             </TouchableOpacity>
                         </View>
                         <View style={{flex: 1}}/>
@@ -752,6 +780,11 @@ export default function SingleGame() {
             </View>
         </View>
     );
+
+    if (assetsLoaded)
+        return gameView;
+    else
+        return <ActivityIndicator/>
 }
 
 const styles = StyleSheet.create({
