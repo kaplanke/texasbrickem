@@ -1,10 +1,9 @@
 import {StatusBar} from 'expo-status-bar';
 import React, {useState} from 'react';
-import {StyleSheet, TouchableOpacity, Text, View, SafeAreaView, ImageBackground} from 'react-native';
+import {StyleSheet, Text, View, SafeAreaView, ImageBackground, Pressable} from 'react-native';
 import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import ScreenTemplate from "./screens/_screenTemplate";
-import SingleGame from "./screens/singleGame";
 
 export default function App() {
 
@@ -19,17 +18,25 @@ export default function App() {
                     imageStyle={{resizeMode: 'repeat'}}
                     source={require('./assets/bg.png')}>
 
-                    <TouchableOpacity
-                        style={styles.mpButton}
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.mpButton,
+                            {opacity: pressed ? 0.5:1}
+                        ]}
                         onPress={() => {
                             navigation.navigate('SingleGame')
                         }}
-                    ><Text style={styles.mpButtonText}>Single Game</Text></TouchableOpacity>
-                    <TouchableOpacity
-                        style={styles.mpButton}
+
+                    ><Text style={styles.mpButtonText}>Single Game</Text></Pressable>
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.mpButton,
+                            {opacity: pressed ? 0.5:1}
+                        ]}
                         onPress={() => {
+                            navigation.navigate('JoinTournament')
                         }}
-                    ><Text style={styles.mpButtonText}>Join Tournament</Text></TouchableOpacity>
+                    ><Text style={styles.mpButtonText}>Join Tournament</Text></Pressable>
                     <StatusBar style="auto"/>
                 </ImageBackground>
             </SafeAreaView>
@@ -41,6 +48,7 @@ export default function App() {
             <Stack.Navigator screenOptions={{headerShown: false}}>
                 <Stack.Screen name="Home" component={MainPage}/>
                 <Stack.Screen name="SingleGame" component={ScreenTemplate}/>
+                <Stack.Screen name="JoinTournament" component={ScreenTemplate}/>
             </Stack.Navigator>
         </NavigationContainer>
     );

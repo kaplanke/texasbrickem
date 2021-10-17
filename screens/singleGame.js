@@ -2,7 +2,7 @@ import React, {useEffect, useState} from 'react';
 import {
     ActivityIndicator,
     StyleSheet,
-    TouchableOpacity,
+    Pressable,
     Text,
     View,
     Image,
@@ -174,18 +174,20 @@ class TBBrick {
     matrix = [];
 
     static generate(game, stage) {
-        const template = rotate90(TBBRICKS_TEMPLATES[random(TBBRICKS_TEMPLATES.length)]);
+        const template = rotate90(TBBRICKS_TEMPLATES[random(TBBRICKS_TEMPLATES.length-6)]);
         const ret = new TBBrick();
         ret.game = game;
         ret.stage = stage;
         ret.matrix = new Array(template.length).fill(null).map(() => new Array(template.length).fill(null));
+        const tmpCard = TBCard.generate(game, stage);
         template.forEach(
             (x, xIdx) => x.forEach(
                 (y, yIdx) => {
-                    y ? ret.matrix[xIdx][yIdx] = TBCard.generate(game, stage) : null;
+                    y ? ret.matrix[xIdx][yIdx] = tmpCard.clone() : null;
                 }
             )
         );
+        tmpCard.destructor();
         return ret;
     }
 
@@ -412,6 +414,10 @@ class TBCard extends Drawable {
         return new TBCard(game, stage, rank, suit);
     }
 
+    clone() {
+        return new TBCard(this.game, this.stage, this.rank, this.suit);
+    }
+
     toString() {
         return this.rank + this.suit;
     }
@@ -506,7 +512,7 @@ export default function SingleGame() {
 
     function prepareScene(gl, sceneColor) {
         const {drawingBufferWidth: width, drawingBufferHeight: height} = gl;
-        const renderer = new Renderer({gl});
+        const renderer = new Renderer({gl, antialias: true});
         renderer.setSize(width, height);
         renderer.setClearColor(sceneColor);
 
@@ -550,8 +556,9 @@ export default function SingleGame() {
             if (!game.currentBrick.draw()) {
                 game.currentBrick.makePassive();
                 gameOver();
+            } else {
+                game.nextBrick = TBBrick.generate(game, currentGame.stagePlay);
             }
-            game.nextBrick = TBBrick.generate(game, currentGame.stagePlay);
         }
         currentGame.interval = setTimeout(step, currentGame.game.speed);
     }
@@ -618,12 +625,20 @@ export default function SingleGame() {
                         d.setPos(d.x, d.y - 1);
                 });
             });
+
+            if (theGame.board.filter(d => d instanceof TBCard).length == 4) {
+                theGame.speed += (1000-theGame.speed)/2;
+                if (theGame.speed > 1000) theGame.speed = 1000;
+            }
+
         }
         theGame.speed -= 4;
+        if (theGame.speed < 1)
+            theGame.speed = 1;
         theGame.setMsg(1, "Score: " + theGame.score + " Speed:%" + Math.trunc((1000 - theGame.speed) / 10), 0xFFEF81);
     }
 
-     useEffect(() => {
+    useEffect(() => {
         let soundHandler;
         window !== undefined && window.addEventListener("keydown", onKeyDown);
         new Audio.Sound.createAsync(
@@ -636,8 +651,8 @@ export default function SingleGame() {
             window !== undefined && window.removeEventListener("keydown", onKeyDown);
             currentGame.timeout && cancelAnimationFrame(currentGame.timeout);
             currentGame.interval && clearTimeout(currentGame.interval);
-            for (var key in currentGame){
-                if (currentGame.hasOwnProperty(key)){
+            for (var key in currentGame) {
+                if (currentGame.hasOwnProperty(key)) {
                     delete currentGame[key];
                 }
             }
@@ -672,6 +687,7 @@ export default function SingleGame() {
     function onContextCreateInfo(gl) {
         currentGame.stageInfo = prepareScene(gl, 0x8080FF);
     }
+
     function onContextCreate(gl) {
         currentGame.stagePlay = prepareScene(gl, 0x0000ff);
     }
@@ -734,10 +750,15 @@ export default function SingleGame() {
                     <View style={{flex: 5, flexDirection: 'column'}}>
                         <View style={{flex: 1}}/>
                         <View style={{flex: 4}}>
-                            <TouchableOpacity style={styles.button} onPress={onDropClick}>
+                            <Pressable
+                                style={({pressed}) => [
+                                    styles.button,
+                                    {opacity: pressed ? 0.5 : 1}
+                                ]}
+                                onPress={onDropClick}>
                                 <Image style={styles.buttonImg}
                                        source={assetCache.redButton}/>
-                            </TouchableOpacity>
+                            </Pressable>
                         </View>
                         <View style={{flex: 1}}/>
                     </View>
@@ -745,34 +766,54 @@ export default function SingleGame() {
                     <View style={{flex: 3, flexDirection: 'column'}}>
                         <View style={{flex: 1}}/>
                         <View style={{flex: 2}}>
-                            <TouchableOpacity style={styles.button} onPress={onLeftClick}>
+                            <Pressable
+                                style={({pressed}) => [
+                                    styles.button,
+                                    {opacity: pressed ? 0.5 : 1}
+                                ]}
+                                onPress={onLeftClick}>
                                 <Image style={styles.buttonImg}
                                        source={assetCache.grayButton}/>
-                            </TouchableOpacity>
+                            </Pressable>
                         </View>
                         <View style={{flex: 1}}/>
                     </View>
                     <View style={{flex: 3, flexDirection: 'column'}}>
                         <View style={{flex: 2}}>
-                            <TouchableOpacity style={styles.button} onPress={onRotateClick}>
+                            <Pressable
+                                style={({pressed}) => [
+                                    styles.button,
+                                    {opacity: pressed ? 0.5 : 1}
+                                ]}
+                                onPress={onRotateClick}>
                                 <Image style={styles.buttonImg}
                                        source={assetCache.grayButton}/>
-                            </TouchableOpacity>
+                            </Pressable>
                         </View>
                         <View style={{flex: 2}}>
-                            <TouchableOpacity style={styles.button} onPress={onDownClick}>
+                            <Pressable
+                                style={({pressed}) => [
+                                    styles.button,
+                                    {opacity: pressed ? 0.5 : 1}
+                                ]}
+                                onPress={onDownClick}>
                                 <Image style={styles.buttonImg}
                                        source={assetCache.grayButton}/>
-                            </TouchableOpacity>
+                            </Pressable>
                         </View>
                     </View>
                     <View style={{flex: 3, flexDirection: 'column'}}>
                         <View style={{flex: 1}}/>
                         <View style={{flex: 2}}>
-                            <TouchableOpacity style={styles.button} onPress={onRightClick}>
+                            <Pressable
+                                style={({pressed}) => [
+                                    styles.button,
+                                    {opacity: pressed ? 0.5 : 1}
+                                ]}
+                                onPress={onRightClick}>
                                 <Image style={styles.buttonImg}
                                        source={assetCache.grayButton}/>
-                            </TouchableOpacity>
+                            </Pressable>
                         </View>
                         <View style={{flex: 1}}/>
                     </View>
